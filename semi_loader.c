@@ -263,6 +263,13 @@ static void init_cci(unsigned cci)
 	/* Wait while change pending bit of status register is set */
 	while(io32(cci+0xc) & 0x1)
 		{}
+
+	/*
+	 * Enable non-secure access to CCI and use a DSB ensure this takes
+	 * effect before such accesses are made.
+	 */
+	io32(cci+0x8) = 1;
+	asm volatile ("dsb" : : : "memory");
 }
 
 static void configure_from_fdt(struct loader_info *info)

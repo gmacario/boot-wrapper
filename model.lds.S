@@ -27,7 +27,8 @@ STACKTOP = 0xff000000;
 
 SECTIONS
 {
- . = PHYS_OFFSET;
+ . = 0;
+ .boot : { boot.o }
 
  . = PHYS_OFFSET + 0x8000 - 0x40;
 

@@ -12,6 +12,8 @@
 	.arch_extension virt
 	.text
 
+	b	start	@ Must be first instruction for power on reset vector
+
 .macro enter_hyp
 	@ We assume we're entered in Secure Supervisor mode. To
 	@ get to Hyp mode we have to pass through Monitor mode
@@ -119,27 +121,32 @@ start:
 	orr	r0, r0, r1
 	mcr	p15, 0, r0, c1, c1, 2
 
-	@ Check CPU nr again
-	mrc	p15, 0, r0, c0, c0, 5		@ MPIDR (ARMv7 only)
-	bfc	r0, #24, #8			@ CPU number, taking multicluster into account
-	cmp	r0, #0				@ primary CPU?
-	beq	2f
-
-	@
-	@ Secondary CPUs (following the RealView SMP booting protocol)
-	@
-	enter_hyp
-
-	ldr	r1, =fs_start - 0x100
-	adr	r2, 1f
-	ldmia	r2, {r3 - r7}			@ move the code to a location
-	stmia	r1, {r3 - r7}			@ less likely to be overridden
+	/*
+	 * If SYS_FLAGS is already set, this is a warm boot and we blindly
+	 * branch to the indicated address right away, irrespective of the
+	 * CPU we are.
+	 */
 #ifdef VEXPRESS
 	ldr	r0, =0x1c010030			@ VE SYS_FLAGS register
 #else
 	ldr	r0, =0x10000030			@ RealView SYS_FLAGS register
 #endif
-	mov	pc, r1				@ branch to the relocated code
+	ldr	r1, [r0]
+	cmp	r1, #0
+	beq	1f
+	enter_hyp
+	bx	r1
+1:
+	/*
+	 * Otherwise this is a cold boot.  In this case it depends if
+	 * we are the primary CPU or not.  The primary CPU boots the system
+	 * while the secondaries wait for the primary to set SYS_FLAGS.
+	 */
+	mrc	p15, 0, r1, c0, c0, 5
+	bics	r1, #0xff000000
+	beq	2f
+
+	enter_hyp
 1:
 #ifdef VEXPRESS
 	wfe
@@ -147,7 +154,7 @@ start:
 	ldr	r1, [r0]
 	cmp	r1, #0
 	beq	1b
-	mov	pc, r1				@ branch to the given address
+	bx	r1				@ branch to the given address
 #endif
 
 2:
